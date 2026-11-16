@@ -1,176 +1,28 @@
-"""가는 김에 · 실행: streamlit run app.py
-GitHub에 이 파일과 requirements.txt 업로드 → Streamlit Community Cloud에서 app.py 배포.
-아래 앱 안의 '처음 연결하기'에 데이터베이스 설치 SQL과 Secrets 안내가 있습니다.
-각 가족이 같은 전용 가족 계정으로 로그인하는 소규모 가족용 버전입니다.
-API 키·비밀번호를 GitHub에 올리지 마세요. 외부 데이터베이스 Supabase 필요.
+"""냉장고 펭귄 · streamlit run app.py
+GitHub에 app.py와 requirements.txt 업로드 후 Streamlit Community Cloud에서 app.py 배포.
+외부 API 불필요. 게임은 브라우저 localStorage에 저장합니다. 다른 기기와 공유되지 않습니다.
 """
-import datetime as dt
-import html
-import time
-import uuid
 import streamlit as st
-from supabase import create_client
+import streamlit.components.v1 as components
 
-SQL = '''-- Supabase 프로젝트 SQL Editor에서 실행하세요.
-create table if not exists public.family_errands (
- id uuid primary key default gen_random_uuid(),
- owner uuid not null default auth.uid() references auth.users(id),
- title text not null check (char_length(title) between 1 and 80),
- route text not null check (route in ('시내에서','집으로','기숙사로')),
- requester text not null check (char_length(requester) between 1 and 30),
- note text not null default '' check (char_length(note)<=500),
- due date,
- status text not null default '대기' check (status in ('대기','진행','완료')),
- assignee text not null default '' check (char_length(assignee)<=30),
- claim_token uuid,
- created_at timestamptz not null default now(),
- updated_at timestamptz not null default now()
-);
-alter table public.family_errands enable row level security;
-drop policy if exists family_private on public.family_errands;
-create policy family_private on public.family_errands for all to authenticated
- using (owner=auth.uid()) with check (owner=auth.uid());
-grant select, insert, update, delete on public.family_errands to authenticated;
-'''
-ROUTES=['시내에서','집으로','기숙사로']
+HTML = r'''<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+*{box-sizing:border-box}body{margin:0;background:#f0f9ff;color:#193b52;font:15px system-ui}main{max-width:650px;margin:auto;padding:14px 12px 35px}button,input,select{font:inherit;padding:12px;border:1px solid #c9e1ed;border-radius:13px;background:white;color:#234c63}button{cursor:pointer;touch-action:manipulation}button:disabled{opacity:.45;cursor:default}h1{font-size:24px;margin:4px 0}h2{font-size:19px}header{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}.coin{background:#fff0b4;border-radius:15px;padding:11px;font-weight:bold}.room{height:360px;position:relative;overflow:hidden;border:9px solid white;border-radius:26px;background:repeating-linear-gradient(90deg,#daf4fc 0 55px,#cfedf7 55px 57px);box-shadow:0 8px 25px #3886a31c;touch-action:none}.floor{position:absolute;inset:64% 0 0;background:repeating-linear-gradient(0deg,#f6e9d1 0 30px,#ead7b9 30px 32px)}.window{position:absolute;left:25px;top:22px;width:92px;height:85px;background:#8dd5f2;border:8px solid white;border-radius:16px;box-shadow:inset 0 0 0 2px #d7f3ff}.window:after{content:'☁️';font-size:40px}.penguin{position:absolute;left:calc(50% - 45px);top:138px;width:90px;height:125px;background:#274c68;border-radius:48% 48% 43% 43%;z-index:4;animation:breathe 3s ease-in-out infinite;pointer-events:none}.belly{position:absolute;left:13px;top:30px;width:64px;height:83px;border-radius:50%;background:#fffdfa}.eyes{position:absolute;left:22px;top:32px;letter-spacing:17px;font-size:19px;color:#15354b;white-space:nowrap}.beak{position:absolute;left:35px;top:59px;width:21px;height:13px;border-radius:50%;background:#ffbb50}.feet{position:absolute;bottom:-5px;left:10px;width:28px;height:14px;border-radius:50%;background:#ffbb50;box-shadow:42px 0 #ffbb50}.wing{position:absolute;left:-11px;top:53px;width:20px;height:48px;background:#274c68;border-radius:60%;transform:rotate(20deg)}.hat{position:absolute;top:-28px;left:17px;font-size:48px;z-index:5}.item{position:absolute;font-size:51px;line-height:1;cursor:grab;z-index:6;user-select:none;touch-action:none;filter:drop-shadow(0 5px 2px #38557022)}.item.selected{outline:2px dashed #3776bf;border-radius:8px}.tabs{display:flex;gap:6px;margin:18px 0}.tabs button{flex:1;padding:12px 4px;font-weight:bold}.active{background:#386ecb;color:white;border-color:#386ecb}.card{background:white;border:1px solid #d8e9f2;border-radius:18px;padding:16px;margin:10px 0}.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.row>*{min-width:0}small{color:#536e7e}input,select{width:100%;margin:7px 0 12px}label{display:block}.primary{background:#386ecb;color:white;border:0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.shopicon{font-size:38px}p{line-height:1.65}.splash{position:fixed;inset:0;background:#a8e4f5;z-index:100;display:grid;place-content:center;text-align:center}.splash .icon{background:#386ecb;padding:20px;border-radius:28px;font-size:65px;margin:auto}.toast{background:#fff1b5;padding:12px;border-radius:12px;display:none;margin:10px 0}.subtitle{font-size:12px;color:#526f80}.hint{text-align:center;font-size:12px;margin:10px;color:#486a7f}@keyframes breathe{50%{transform:translateY(-5px) rotate(2deg)}}@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style><div class="splash" id="splash"><div class="icon">🐧</div><h1>냉장고 펭귄</h1><p>남김없이 쓰고, 귀엽게 꾸며요.</p></div><main><header><div><div class="subtitle">우리 집 냉장고에 펭귄 산다</div><h1>냉장고 펭귄 🐧</h1></div><div class="coin" id="coins"></div></header><div class="room" id="room"><div class="floor"></div><div class="window"></div><div class="penguin"><div class="wing"></div><div class="belly"></div><div class="eyes">••</div><div class="beak"></div><div class="feet"></div><div class="hat" id="hat"></div></div><div id="furniture"></div></div><div class="hint" id="hint">가구를 손가락으로 끌어 원하는 곳에 놓아 주세요.</div><div class="toast" id="toast" role="status"></div><div class="tabs"><button onclick="tab='fridge';render()" id="tfridge">🥕 냉장고</button><button onclick="tab='shop';render()" id="tshop">🛍 상점</button><button onclick="tab='closet';render()" id="tcloset">🪑 꾸미기</button><button onclick="tab='save';render()" id="tsave">⚙ 저장</button></div><section id="panel"></section></main><script>
+const catalog=[{id:'plant',name:'작은 화분',icon:'🪴',cost:0,type:'furniture'},{id:'chair',name:'폭신 의자',icon:'🪑',cost:25,type:'furniture'},{id:'bed',name:'낮잠 침대',icon:'🛏️',cost:45,type:'furniture'},{id:'lamp',name:'노란 조명',icon:'💡',cost:20,type:'furniture'},{id:'bear',name:'곰 인형',icon:'🧸',cost:30,type:'furniture'},{id:'flower',name:'꽃 한 다발',icon:'🌷',cost:20,type:'furniture'},{id:'crown',name:'왕관',icon:'👑',cost:35,type:'hat'},{id:'ribbon',name:'리본',icon:'🎀',cost:20,type:'hat'},{id:'cap',name:'산책 모자',icon:'👒',cost:30,type:'hat'},{id:'peach',name:'복숭아 벽지',icon:'🍑',cost:30,type:'wall'},{id:'mint',name:'민트 벽지',icon:'🌿',cost:30,type:'wall'}];
+const defaults=()=>({version:1,coins:30,owned:['plant'],placed:[{id:'plant',x:15,y:72}],hat:'',wall:'',foods:[],rewardDate:'',rewardCount:0});let state=defaults(),tab='fridge';const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const today=()=>{let d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};function valid(s){if(!s||s.version!==1||!Number.isInteger(s.coins)||s.coins<0||s.coins>1000000||!Array.isArray(s.foods)||s.foods.length>200||!Array.isArray(s.owned)||s.owned.some(id=>!catalog.some(c=>c.id===id))||!Array.isArray(s.placed)||s.placed.length>catalog.length||!Number.isInteger(s.rewardCount)||s.rewardCount<0||s.rewardCount>3||typeof s.rewardDate!=='string'||s.rewardDate.length>10)throw Error();if(!['','crown','ribbon','cap'].includes(s.hat)||!['','peach','mint'].includes(s.wall)||(s.hat&&!s.owned.includes(s.hat))||(s.wall&&!s.owned.includes(s.wall)))throw Error();let ids=new Set();for(let f of s.foods){if(typeof f.id!=='string'||!/^[a-z0-9-]+$/i.test(f.id)||ids.has(f.id)||typeof f.name!=='string'||!f.name.trim()||f.name.length>50||!Number.isFinite(f.qty)||f.qty<=0||f.qty>9999||!['개','g','ml','봉','팩'].includes(f.unit)||typeof f.due!=='string'||(f.due&&!/^\d{4}-\d{2}-\d{2}$/.test(f.due)))throw Error();ids.add(f.id)}ids=new Set();for(let p of s.placed){if(!s.owned.includes(p.id)||!catalog.some(c=>c.id===p.id&&c.type==='furniture')||ids.has(p.id)||!Number.isFinite(p.x)||!Number.isFinite(p.y)||p.x<0||p.x>84||p.y<0||p.y>80)throw Error();ids.add(p.id)}return s}
+try{const stored=localStorage.getItem('fridge-penguin-v1');if(stored)state=valid(JSON.parse(stored))}catch{setTimeout(()=>notify('저장 기록을 읽지 못했어요. 백업 파일이 있다면 불러와 주세요.'),3100)}function save(){try{localStorage.setItem('fridge-penguin-v1',JSON.stringify(state))}catch{notify('브라우저 저장이 안 돼요. 저장 탭에서 백업하세요.')}}let timer;function notify(t){let el=document.getElementById('toast');el.textContent=t;el.style.display='block';clearTimeout(timer);timer=setTimeout(()=>el.style.display='none',6500)}function dayReset(){if(state.rewardDate!==today()){state.rewardDate=today();state.rewardCount=0}}
+function drawRoom(){document.getElementById('coins').textContent='🪙 '+state.coins;document.getElementById('hat').textContent=catalog.find(c=>c.id===state.hat)?.icon||'';let room=document.getElementById('room');room.style.background=state.wall==='peach'?'#ffe3d6':state.wall==='mint'?'#d9f2de':'';document.getElementById('furniture').innerHTML=state.placed.map(p=>`<div class="item" data-item="${p.id}" style="left:${p.x}%;top:${p.y}%" role="button" tabindex="0" aria-label="${esc(catalog.find(c=>c.id===p.id).name)}. 드래그하거나 선택 후 방향키로 이동">${catalog.find(c=>c.id===p.id).icon}</div>`).join('');document.querySelectorAll('.item').forEach(el=>{let drag=null;el.onpointerdown=e=>{e.preventDefault();let r=room.getBoundingClientRect(),b=el.getBoundingClientRect();drag={dx:e.clientX-b.left,dy:e.clientY-b.top};el.setPointerCapture(e.pointerId);el.classList.add('selected')};el.onpointermove=e=>{if(!drag)return;let r=room.getBoundingClientRect(),p=state.placed.find(p=>p.id===el.dataset.item);p.x=Math.max(0,Math.min(84,(e.clientX-r.left-drag.dx)/r.width*100));p.y=Math.max(0,Math.min(80,(e.clientY-r.top-drag.dy)/r.height*100));el.style.left=p.x+'%';el.style.top=p.y+'%'};el.onpointerup=el.onpointercancel=()=>{drag=null;el.classList.remove('selected');save()};el.onkeydown=e=>{let d={ArrowLeft:[-2,0],ArrowRight:[2,0],ArrowUp:[0,-2],ArrowDown:[0,2]}[e.key];if(!d)return;e.preventDefault();let p=state.placed.find(p=>p.id===el.dataset.item);p.x=Math.max(0,Math.min(84,p.x+d[0]));p.y=Math.max(0,Math.min(80,p.y+d[1]));el.style.left=p.x+'%';el.style.top=p.y+'%';save()}})}
+function render(){dayReset();drawRoom();['fridge','shop','closet','save'].forEach(t=>document.getElementById('t'+t).className=tab===t?'active':'');let panel=document.getElementById('panel');if(tab==='fridge'){panel.innerHTML=`<div class="card"><b>오늘의 재료 활용 보상 ${state.rewardCount}/3</b><p>실제로 사용한 만큼 기록하면 10코인! 하루 최대 3회예요. 먹거나 구매하는 양을 늘릴 필요는 없어요.</p><details><summary>＋ 재료 넣기</summary><form id="add"><label>재료 이름<input name="name" maxlength="50" required placeholder="예: 당근"></label><div class="row"><label style="flex:1">수량<input name="qty" type="number" min="0.01" max="9999" step="0.01" required value="1"></label><label style="flex:1">단위<select name="unit"><option>개</option><option>g</option><option>ml</option><option>봉</option><option>팩</option></select></label></div><label>먼저 확인할 날짜 · 선택<input type="date" name="due"></label><button class="primary">등록하기</button></form></details></div><div id="foods"></div><small>날짜는 확인을 돕는 메모이며 식품의 안전 여부를 판단하지 않습니다. 표시사항과 보관 상태를 확인하세요.</small>`;document.getElementById('add').onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),name=f.get('name').trim(),qty=Number(f.get('qty'));if(!name||!Number.isFinite(qty)||qty<=0||qty>9999)return;if(state.foods.length>=200){notify('재료는 최대 200개예요.');return}state.foods.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),name,qty,unit:f.get('unit'),due:f.get('due')});save();render();notify('냉장고에 기록했어요.')};let foods=[...state.foods].sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));document.getElementById('foods').innerHTML=foods.length?foods.map(f=>`<div class="card"><b>🥕 ${esc(f.name)}</b><p>${f.qty} ${f.unit}${f.due?' · 확인일 '+esc(f.due):''}</p>${f.due&&f.due<today()?'<small>확인 날짜가 지났어요. 상태와 표시사항을 확인하세요.</small>':''}<label>이번에 실제 사용한 양<input id="qty-${f.id}" type="number" min="0.01" max="${f.qty}" step="0.01" value="${Math.min(1,f.qty)}"></label><button class="primary" onclick="useFood('${f.id}')">사용했어요</button> <button onclick="removeFood('${f.id}')">삭제 · 보상 없음</button></div>`).join(''):'<div class="card">먼저 사용할 재료 몇 개만 등록해 보세요. 냉장고 전체를 입력할 필요는 없어요.</div>'}
+if(tab==='shop'){panel.innerHTML='<h2>펭귄의 작은 상점</h2><p>시작 코인 30개와 기본 화분을 선물했어요.</p><div class="grid">'+catalog.map(c=>`<div class="card"><div class="shopicon">${c.icon}</div><p>${c.name}</p><button onclick="buy('${c.id}')" ${state.owned.includes(c.id)||state.coins<c.cost?'disabled':''}>${state.owned.includes(c.id)?'보유 중':c.cost+' 코인'}</button></div>`).join('')+'</div>'}
+if(tab==='closet'){panel.innerHTML='<h2>내 방 꾸미기</h2><p>가구를 꺼낸 뒤 방 안에서 직접 끌어 옮겨 보세요.</p><button onclick="state.hat=\'\';state.wall=\'\';save();render()">기본 옷·벽지</button><div class="grid">'+catalog.filter(c=>state.owned.includes(c.id)).map(c=>`<div class="card"><span class="shopicon">${c.icon}</span><p>${c.name}</p><button onclick="equip('${c.id}')">${c.type==='furniture'?(state.placed.some(p=>p.id===c.id)?'넣어 두기':'방에 꺼내기'):'적용하기'}</button></div>`).join('')+'</div>'}
+if(tab==='save'){panel.innerHTML=`<div class="card"><h2>게임 보관함</h2><p>이 브라우저에 자동 저장돼요. 다른 기기와 자동 공유되지는 않으며 브라우저 데이터를 지우면 사라져요. 백업을 다운로드해 안전하게 보관하세요.</p><button class="primary" id="export">백업 다운로드</button><label style="margin-top:18px">백업 불러오기 · 현재 게임 대체<input type="file" id="import" accept="application/json"></label><details><summary>처음부터 다시</summary><p>현재 재료와 코인·꾸미기 기록이 삭제돼요.</p><button id="reset">게임 초기화</button></details></div><small>재료 활용은 본인 기록에 의존해요. 삭제에는 보상이 없고, 날짜는 기기의 현지 시간을 사용합니다. 식품 안전·의료 조언 앱이 아니에요. 접속하지 않아도 펭귄은 아프지 않아요.</small>`;document.getElementById('export').onclick=()=>{let u=URL.createObjectURL(new Blob([JSON.stringify(state)],{type:'application/json'})),a=document.createElement('a');a.href=u;a.download='냉장고펭귄_백업.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};document.getElementById('import').onchange=async e=>{try{let file=e.target.files[0];if(!file)return;if(file.size>2000000)throw Error();let s=valid(JSON.parse(await file.text()));if(confirm('현재 게임을 이 백업으로 바꿀까요?')){state=s;save();render();notify('게임을 불러왔어요.')}}catch{notify('올바른 게임 백업 파일인지 확인해 주세요.')}};document.getElementById('reset').onclick=()=>{if(confirm('정말 처음부터 다시 할까요?')){state=defaults();save();render()}}}}
+function useFood(id){let f=state.foods.find(f=>f.id===id),qty=Number(document.getElementById('qty-'+id).value);if(!f||!Number.isFinite(qty)||qty<=0||qty>f.qty){notify('남은 수량 안에서 사용량을 입력해 주세요.');return}dayReset();f.qty=Math.round((f.qty-qty)*100)/100;state.foods=state.foods.filter(f=>f.qty>0);let reward=state.rewardCount<3;if(reward){state.rewardCount++;state.coins+=10}save();render();notify(reward?'활용 기록 완료! 10코인을 받았어요 🪙':'활용 기록 완료! 오늘의 코인 보상은 모두 받았어요.')}
+function removeFood(id){if(!confirm('재료를 삭제할까요? 코인은 지급되지 않아요.'))return;state.foods=state.foods.filter(f=>f.id!==id);save();render()}
+function buy(id){let c=catalog.find(c=>c.id===id);if(!c||state.owned.includes(id)||state.coins<c.cost)return;state.coins-=c.cost;state.owned.push(id);save();render();notify(c.name+' 구매 완료! 꾸미기 탭에서 꺼내 보세요.')}
+function equip(id){let c=catalog.find(c=>c.id===id);if(!c||!state.owned.includes(id))return;if(c.type==='hat')state.hat=id;else if(c.type==='wall')state.wall=id;else if(state.placed.some(p=>p.id===id))state.placed=state.placed.filter(p=>p.id!==id);else state.placed.push({id,x:65,y:70});save();render()}
+setTimeout(()=>document.getElementById('splash').remove(),3000);render();
+</script></html>'''
 
-
-def esc(s): return html.escape(str(s))
-
-
-def config():
-    try:return st.secrets.get('SUPABASE_URL',''),st.secrets.get('SUPABASE_ANON_KEY','')
-    except Exception:return '', ''
-
-
-def setup():
-    with st.expander('처음 연결하기 · 배포 안내'):
-        st.markdown('''**한 번만 설정하면 가족이 각자 휴대폰에서 같은 목록을 봅니다.**
-
-1. Supabase에서 프로젝트를 만들고 SQL Editor에서 아래 SQL을 실행하세요.
-2. Authentication → Users에서 **전용 가족 계정**을 만들고 이메일 확인을 완료하세요. 관리 화면에서 Add user로 이메일 확인된 사용자를 생성해도 됩니다.
-3. Streamlit Community Cloud에서 GitHub 저장소와 `app.py`를 선택하세요.
-4. Streamlit 앱 설정 → Secrets에 아래 두 값을 저장하세요. Supabase의 공개 publishable 키 또는 legacy anon 키를 사용하고, **secret/service_role 키는 사용하지 마세요.**
-5. 가족끼리만 전용 계정 이메일과 비밀번호를 안전하게 공유하세요. 각자는 로그인 후 다른 별명을 입력합니다.
-
-이 버전은 가족별 **공동 계정 하나**를 쓰므로 개별 사용자 권한 구분은 없습니다. 별명은 신원 인증이 아니며, 로그인한 가족은 전체 목록을 관리할 수 있어요. 다른 가족은 별도 계정을 써야 목록이 분리됩니다.''')
-        st.code('SUPABASE_URL = "https://프로젝트.supabase.co"\nSUPABASE_ANON_KEY = "공개 키"',language='toml')
-        st.code(SQL,language='sql')
-        st.caption('Supabase 저장 정책과 서비스 이용 조건이 적용됩니다. 주소·암호·결제 정보 등 민감한 내용은 부탁에 적지 마세요. 자동 알림/백그라운드 동기화는 없으며 새로고침 버튼으로 최신 상태를 확인합니다.')
-
-
-def main():
-    st.set_page_config(page_title='가는 김에',page_icon='🛍️',layout='centered',initial_sidebar_state='collapsed')
-    st.markdown('''<style>
-[data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"]{display:none}
-.stApp{background:#f6f7fb;color:#192a39}.block-container{max-width:680px;padding:1.5rem 1rem 4rem}
-h1,h2,h3{color:#132b39}button{min-height:46px!important;border-radius:14px!important}.stButton>button[kind="primary"]{background:#176b51;border:none;color:white}.hero{background:#123e33;border-radius:25px;padding:26px 24px;color:white;margin-bottom:18px}.hero h1{color:white;font-size:2.15rem;margin:5px 0}.hero p{color:#d5eadf;margin-bottom:0}.pill{font-size:12px;letter-spacing:2px;color:#c5ed8f}.tile{border-left:5px solid #72b48a;background:white;border-radius:15px;padding:18px;margin-top:12px;border:1px solid #e0e6e7}.tile h3{font-size:20px;margin:5px 0 10px}.meta{font-size:13px;color:#566772}.splash{height:70vh;display:flex;align-items:center;justify-content:center;text-align:center}.splashbox{width:100%;background:#123e33;border-radius:35px;padding:65px 15px;color:white}.splashbox h1{color:white}.mark{font-size:70px}
-</style>''',unsafe_allow_html=True)
-    ss=st.session_state
-    if not ss.get('intro'):
-        ss.intro=True
-        view=st.empty();view.markdown('<div class="splash"><div class="splashbox"><div class="mark">🛍️↗</div><h1>가는 김에</h1><p>부탁은 모으고, 헛걸음은 줄이고.</p></div></div>',unsafe_allow_html=True)
-        time.sleep(3);view.empty()
-    st.markdown('<div class="hero"><div class="pill">ONE TRIP, TOGETHER</div><h1>가는 김에 🛍️</h1><p>누가 챙기는지 알면, 두 번 살 일 없으니까.</p></div>',unsafe_allow_html=True)
-    url,key=config()
-    if not url or not key:
-        st.info('가족의 부탁을 안전하게 저장하려면 최초 연결이 필요해요. API 키 없이 동작하는 임시 목록으로 가장하지 않습니다.')
-        setup();return
-    if 'db' not in ss:
-        try:ss.db=create_client(url,key)
-        except Exception:
-            st.error('연결 설정을 확인해 주세요.');setup();return
-    db=ss.db
-    if not ss.get('logged_in'):
-        st.subheader('우리 가족 공간에 들어가기')
-        st.caption('가족이 같은 전용 계정으로 로그인하고, 각자의 별명으로 부탁을 맡아요.')
-        with st.form('login'):
-            email=st.text_input('가족 계정 이메일',max_chars=254)
-            password=st.text_input('비밀번호',type='password')
-            nick=st.text_input('내 별명',max_chars=30,placeholder='예: 아빠, 엄마, 나')
-            enter=st.form_submit_button('함께 챙기러 가기',type='primary',use_container_width=True)
-        if enter:
-            if not email.strip() or not password or not nick.strip():st.warning('이메일, 비밀번호, 별명을 적어 주세요.')
-            else:
-                try:
-                    auth=db.auth.sign_in_with_password({'email':email.strip(),'password':password})
-                    if not auth.user:raise ValueError()
-                    ss.logged_in=True;ss.nick=nick.strip();st.rerun()
-                except Exception:st.error('로그인하지 못했어요. 계정, 비밀번호, 이메일 확인 상태와 연결 설정을 확인해 주세요.')
-        setup();return
-    top=st.columns([3,1,1])
-    top[0].caption(f'👋 {ss.nick} · 우리 가족 부탁함')
-    if top[1].button('새로고침',use_container_width=True):st.rerun()
-    if top[2].button('나가기',use_container_width=True):
-        try:db.auth.sign_out()
-        except Exception:pass
-        for k in ('db','logged_in','nick'):ss.pop(k,None)
-        st.rerun()
-    if ss.get('notice'):st.success(ss.pop('notice'))
-    try:items=db.table('family_errands').select('*').order('created_at',desc=True).limit(1000).execute().data
-    except Exception:
-        st.error('부탁을 불러오지 못했어요. 연결·로그인 만료·데이터베이스 설치를 확인해 주세요. 저장된 데이터를 지우지는 않았어요.');setup();return
-    if len(items)==1000:st.warning('최근 1,000건만 표시해요. 오래된 완료 항목을 정리해 주세요.')
-    a,b,c=st.columns(3)
-    for col,label,status in [(a,'아직 주인 없는 부탁','대기'),(b,'챙기는 중','진행'),(c,'완료했어요','완료')]:col.metric(label,sum(v['status']==status for v in items))
-    board,add=st.tabs(['📋 부탁 보기','＋ 부탁 남기기'])
-    with add:
-        st.subheader('가는 길에 이것도 부탁해요')
-        with st.form('add',clear_on_submit=True):
-            title=st.text_input('무엇을 챙길까요?',max_chars=80,placeholder='예: 우유 1개, 기숙사에 가져갈 충전기')
-            route=st.selectbox('어느 길에?',ROUTES)
-            use_due=st.checkbox('필요한 날짜가 있어요')
-            due=st.date_input('필요한 날짜',value=dt.date.today())
-            note=st.text_area('수량·종류·참고할 점',max_chars=500,placeholder='예: 1L짜리 한 개. 없으면 사지 않아도 돼요.')
-            send=st.form_submit_button('부탁 남기기',type='primary',use_container_width=True)
-        if send:
-            duplicates=[v for v in items if v['status']!='완료' and v['title'].strip().casefold()==title.strip().casefold() and v['route']==route]
-            if not title.strip():st.warning('무엇이 필요한지 적어 주세요.')
-            elif duplicates:st.warning('같은 이동 경로에 제목이 같은 부탁이 이미 있어요. 목록을 먼저 확인해 주세요. 필요하면 수량을 구분해 작성하세요.')
-            else:
-                try:
-                    db.table('family_errands').insert({'title':title.strip(),'route':route,'requester':ss.nick,'note':note.strip(),'due':str(due) if use_due else None}).execute()
-                    ss.notice='부탁을 남겼어요!';st.rerun()
-                except Exception:st.error('저장하지 못했어요. 잠시 후 목록을 새로고침해 중복 저장 여부를 확인해 주세요.')
-    with board:
-        route_filter=st.selectbox('이동 경로',['전체']+ROUTES)
-        status_filter=st.radio('어떤 부탁을 볼까요?',['진행할 부탁','내가 맡은 부탁','완료한 부탁'],horizontal=True)
-        q=st.text_input('부탁 검색',placeholder='제목이나 메모 검색',max_chars=80).strip().casefold()
-        filtered=[v for v in items if (route_filter=='전체' or v['route']==route_filter) and (v['status']=='완료' if status_filter=='완료한 부탁' else v['status']=='진행' and v['assignee']==ss.nick if status_filter=='내가 맡은 부탁' else v['status']!='완료') and (not q or q in (v['title']+' '+v['note']).casefold())]
-        if not filtered:st.info('여기는 아직 비어 있어요. 새 부탁을 남기거나 다른 경로를 확인해 보세요.')
-        for v in filtered:
-            due_text=f' · {v["due"]}까지' if v['due'] else ''
-            st.markdown(f'<div class="tile"><div class="meta">{esc(v["route"])} · {esc(v["status"])}{esc(due_text)}</div><h3>{esc(v["title"])}</h3><div class="meta">부탁한 사람: {esc(v["requester"])}'+(f' · 담당: {esc(v["assignee"])}' if v['assignee'] else '')+'</div></div>',unsafe_allow_html=True)
-            if v['note']:st.write(v['note'])
-            if v['due'] and v['status']!='완료' and v['due']<str(dt.date.today()):st.warning('요청 날짜가 지났어요. 아직 필요한지 확인해 주세요.')
-            if v['status']=='대기':
-                if st.button('🙋 내가 챙길게',key='claim'+v['id'],type='primary',use_container_width=True):
-                    token=str(uuid.uuid4())
-                    try:
-                        db.table('family_errands').update({'status':'진행','assignee':ss.nick,'claim_token':token,'updated_at':dt.datetime.now(dt.timezone.utc).isoformat()}).eq('id',v['id']).eq('status','대기').execute()
-                        check=db.table('family_errands').select('claim_token').eq('id',v['id']).execute().data
-                        ss.notice='내가 맡았어요. 다른 가족에게도 담당자가 표시돼요.' if check and check[0]['claim_token']==token else '다른 가족이 먼저 맡았거나 목록이 변경됐어요.'
-                        st.rerun()
-                    except Exception:st.error('처리 결과를 확인하지 못했어요. 새로고침해 주세요.')
-            elif v['status']=='진행' and v['assignee']==ss.nick:
-                left,right=st.columns(2)
-                for col,label,new_status in [(left,'✓ 챙겼어요','완료'),(right,'다시 부탁하기','대기')]:
-                    if col.button(label,key=new_status+v['id'],use_container_width=True):
-                        try:
-                            change={'status':new_status,'updated_at':dt.datetime.now(dt.timezone.utc).isoformat()}
-                            if new_status=='대기':change.update(assignee='',claim_token=None)
-                            db.table('family_errands').update(change).eq('id',v['id']).eq('status','진행').eq('claim_token',v['claim_token']).execute()
-                            ss.notice='목록을 업데이트했어요. 최신 상태를 확인해 주세요.';st.rerun()
-                        except Exception:st.error('처리하지 못했어요. 새로고침해 주세요.')
-            with st.expander('부탁 삭제'):
-                consent=st.checkbox('가족과 확인했으며 삭제할게요',key='ok'+v['id'])
-                if st.button('삭제',key='del'+v['id'],disabled=not consent):
-                    try:
-                        db.table('family_errands').delete().eq('id',v['id']).execute();st.rerun()
-                    except Exception:st.error('삭제하지 못했어요.')
-    st.caption('🔄 다른 가족의 변경 내용은 ‘새로고침’으로 확인하세요. 자동 푸시 알림은 없어요. 별명은 서로 다르게 사용해 주세요.')
-    with st.expander('우리 가족 사용 약속'):
-        st.write('① 필요한 부탁을 남겨요. ② 가는 사람이 먼저 맡아요. ③ 구입·전달이 끝나면 완료해요. 못 하게 되면 다시 부탁하기를 눌러요. 수량이나 경로가 다르면 서로 확인해 주세요.')
-        st.caption('이 앱은 이동 경로 최적화나 자동 일정 배정이 아닌, 부탁의 중복·누락을 줄이는 가족 공유 목록입니다.')
-
-if __name__=='__main__':main()
+st.set_page_config(page_title='냉장고 펭귄',page_icon='🐧',layout='centered',initial_sidebar_state='collapsed')
+st.markdown('<style>[data-testid="stSidebar"],[data-testid="stSidebarCollapsedControl"]{display:none}.block-container{padding:0 .3rem;max-width:720px}.stApp{background:#f0f9ff}</style>',unsafe_allow_html=True)
+components.html(HTML,height=1400,scrolling=True)
